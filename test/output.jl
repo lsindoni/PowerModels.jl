@@ -20,9 +20,9 @@
     end
 end
 
-@testset "test line flow output" begin
+@testset "test branch flow output" begin
     @testset "24-bus rts case ac opf" begin
-        result = run_opf("../test/data/case24.m", ACPPowerModel, ipopt_solver; setting = Dict("output" => Dict("line_flows" => true)))
+        result = run_opf("../test/data/case24.m", ACPPowerModel, ipopt_solver; setting = Dict("output" => Dict("branch_flows" => true)))
 
         @test haskey(result, "solver") == true
         @test haskey(result, "status") == true
@@ -46,9 +46,9 @@ end
         @test isapprox(branches["2"]["qt"], -0.0571; atol = 1e-3)
     end
 
-    # A DCPPowerModel test is important because it does have variables for the reverse side of the lines
+    # A DCPPowerModel test is important because it does have variables for the reverse side of the branchs
     @testset "3-bus case dc opf" begin
-        result = run_opf("../test/data/case3.m", DCPPowerModel, ipopt_solver; setting = Dict("output" => Dict("line_flows" => true)))
+        result = run_opf("../test/data/case3.m", DCPPowerModel, ipopt_solver; setting = Dict("output" => Dict("branch_flows" => true)))
 
         @test haskey(result, "solution") == true
         @test haskey(result["solution"], "branch") == true
@@ -70,11 +70,12 @@ end
 
 # recomended by @lroald
 @testset "test solution feedback" begin
-    @testset "3-bus case" begin
-        data = PowerModels.parse_file("../test/data/case3.m")
+
+    function solution_feedback(case, ac_opf_obj)
+        data = PowerModels.parse_file(case)
         opf_result = run_ac_opf(data, ipopt_solver)
         @test opf_result["status"] == :LocalOptimal
-        @test isapprox(opf_result["objective"], 5907; atol = 1e0)
+        @test isapprox(opf_result["objective"], ac_opf_obj; atol = 1e0)
 
         PowerModels.update_data(data, opf_result["solution"])
 
@@ -98,4 +99,17 @@ end
             @test isapprox(opf_result["solution"]["dcline"][i]["pt"], pf_result["solution"]["dcline"][i]["pt"]; atol = 1e-3)
         end
     end
+
+    @testset "3-bus case" begin
+        solution_feedback("../test/data/case3.m", 5907)
+    end
+
+    @testset "5-bus asymmetric case" begin
+        solution_feedback("../test/data/case5_asym.m", 17551)
+    end
+
+    @testset "5-bus with dcline costs" begin
+        solution_feedback("../test/data/case5_dc.m", 17760.2)
+    end
+
 end

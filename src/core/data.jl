@@ -92,6 +92,33 @@ function check_keys(data, keys)
     end
 end
 
+"Transforms a single network into a multinetwork with several deepcopies of the original network"
+function replicate(sn_data::Dict{String,Any}, count::Int)
+    @assert count > 1
+    if !haskey(sn_data, "multinetwork") || sn_data["multinetwork"] == true
+        error("replicate can only be used on single networks")
+    end
+
+    mn_data = Dict{String,Any}(
+        "name" => "$(count) replicates of $(sn_data["name"])",
+        "multinetwork" => true,
+        "per_unit" => sn_data["per_unit"],
+        "baseMVA" => sn_data["baseMVA"],
+        "nw" => Dict{String,Any}()
+    )
+
+    sc_data_tmp = deepcopy(sn_data)
+    delete!(sc_data_tmp, "multinetwork")
+    delete!(sc_data_tmp, "per_unit")
+    delete!(sc_data_tmp, "baseMVA")
+
+    for n in 1:count
+        mn_data["nw"]["$n"] = deepcopy(sc_data_tmp)
+    end
+
+    return mn_data
+end
+
 
 "recursively applies new_data to data, overwriting information"
 function update_data(data::Dict{String,Any}, new_data::Dict{String,Any})
@@ -134,178 +161,211 @@ function make_per_unit(data::Dict{String,Any})
     if !haskey(data, "per_unit") || data["per_unit"] == false
         data["per_unit"] = true
         mva_base = data["baseMVA"]
-
-        rescale = x -> x/mva_base
-
-        if haskey(data, "bus")
-            for (i, bus) in data["bus"]
-                apply_func(bus, "pd", rescale)
-                apply_func(bus, "qd", rescale)
-
-                apply_func(bus, "gs", rescale)
-                apply_func(bus, "bs", rescale)
-
-                apply_func(bus, "va", deg2rad)
+        if data["multinetwork"] == true
+            for (i,nw_data) in data["nw"]
+                _make_per_unit(nw_data, mva_base)
             end
+        else
+             _make_per_unit(data, mva_base)
         end
+    end
+end
 
-        branches = []
-        if haskey(data, "branch")
-            append!(branches, values(data["branch"]))
+function _make_per_unit(data::Dict{String,Any}, mva_base::Real)
+    rescale      = x -> x/mva_base
+    rescale_dual = x -> x*mva_base
+
+    if haskey(data, "bus")
+        for (i, bus) in data["bus"]
+            apply_func(bus, "pd", rescale)
+            apply_func(bus, "qd", rescale)
+
+            apply_func(bus, "gs", rescale)
+            apply_func(bus, "bs", rescale)
+
+            apply_func(bus, "va", deg2rad)
+
+            apply_func(bus, "lam_kcl_r", rescale_dual)
+            apply_func(bus, "lam_kcl_i", rescale_dual)
         end
-        dclines =[]
-        if haskey(data, "dcline")
-            append!(dclines, values(data["dcline"]))
-        end
+    end
 
-        if haskey(data, "ne_branch")
-            append!(branches, values(data["ne_branch"]))
-        end
+    branches = []
+    if haskey(data, "branch")
+        append!(branches, values(data["branch"]))
+    end
+    dclines =[]
+    if haskey(data, "dcline")
+        append!(dclines, values(data["dcline"]))
+    end
 
-        for branch in branches
-            apply_func(branch, "rate_a", rescale)
-            apply_func(branch, "rate_b", rescale)
-            apply_func(branch, "rate_c", rescale)
+    if haskey(data, "ne_branch")
+        append!(branches, values(data["ne_branch"]))
+    end
 
-            apply_func(branch, "shift", deg2rad)
-            apply_func(branch, "angmax", deg2rad)
-            apply_func(branch, "angmin", deg2rad)
-        end
+    for branch in branches
+        apply_func(branch, "rate_a", rescale)
+        apply_func(branch, "rate_b", rescale)
+        apply_func(branch, "rate_c", rescale)
 
-        for dcline in dclines
-            apply_func(dcline, "loss0", rescale)
-            apply_func(dcline, "pf", rescale)
-            apply_func(dcline, "pt", rescale)
-            apply_func(dcline, "qf", rescale)
-            apply_func(dcline, "qt", rescale)
-            apply_func(dcline, "pmaxt", rescale)
-            apply_func(dcline, "pmint", rescale)
-            apply_func(dcline, "pmaxf", rescale)
-            apply_func(dcline, "pminf", rescale)
-            apply_func(dcline, "qmaxt", rescale)
-            apply_func(dcline, "qmint", rescale)
-            apply_func(dcline, "qmaxf", rescale)
-            apply_func(dcline, "qminf", rescale)
-        end
+        apply_func(branch, "shift", deg2rad)
+        apply_func(branch, "angmax", deg2rad)
+        apply_func(branch, "angmin", deg2rad)
 
-        if haskey(data, "gen")
-            for (i, gen) in data["gen"]
-                apply_func(gen, "pg", rescale)
-                apply_func(gen, "qg", rescale)
+        apply_func(branch, "pf", rescale)
+        apply_func(branch, "pt", rescale)
+        apply_func(branch, "qf", rescale)
+        apply_func(branch, "qt", rescale)
+    end
 
-                apply_func(gen, "pmax", rescale)
-                apply_func(gen, "pmin", rescale)
+    for dcline in dclines
+        apply_func(dcline, "loss0", rescale)
+        apply_func(dcline, "pf", rescale)
+        apply_func(dcline, "pt", rescale)
+        apply_func(dcline, "qf", rescale)
+        apply_func(dcline, "qt", rescale)
+        apply_func(dcline, "pmaxt", rescale)
+        apply_func(dcline, "pmint", rescale)
+        apply_func(dcline, "pmaxf", rescale)
+        apply_func(dcline, "pminf", rescale)
+        apply_func(dcline, "qmaxt", rescale)
+        apply_func(dcline, "qmint", rescale)
+        apply_func(dcline, "qmaxf", rescale)
+        apply_func(dcline, "qminf", rescale)
+    end
 
-                apply_func(gen, "qmax", rescale)
-                apply_func(gen, "qmin", rescale)
+    if haskey(data, "gen")
+        for (i, gen) in data["gen"]
+            apply_func(gen, "pg", rescale)
+            apply_func(gen, "qg", rescale)
 
-                if "model" in keys(gen) && "cost" in keys(gen)
-                    if gen["model"] != 2
-                        warn("Skipping generator cost model of type other than 2")
-                    else
-                        degree = length(gen["cost"])
-                        for (i, item) in enumerate(gen["cost"])
-                            gen["cost"][i] = item*mva_base^(degree-i)
-                        end
+            apply_func(gen, "pmax", rescale)
+            apply_func(gen, "pmin", rescale)
+
+            apply_func(gen, "qmax", rescale)
+            apply_func(gen, "qmin", rescale)
+
+            if "model" in keys(gen) && "cost" in keys(gen)
+                if gen["model"] != 2
+                    warn("Skipping generator cost model of type other than 2")
+                else
+                    degree = length(gen["cost"])
+                    for (i, item) in enumerate(gen["cost"])
+                        gen["cost"][i] = item*mva_base^(degree-i)
                     end
                 end
             end
         end
-
     end
+
 end
+
 
 "Transforms network data into mixed-units (inverse of per-unit)"
 function make_mixed_units(data::Dict{String,Any})
     if haskey(data, "per_unit") && data["per_unit"] == true
         data["per_unit"] = false
         mva_base = data["baseMVA"]
-
-        rescale = x -> x*mva_base
-
-        if haskey(data, "bus")
-            for (i, bus) in data["bus"]
-                apply_func(bus, "pd", rescale)
-                apply_func(bus, "qd", rescale)
-
-                apply_func(bus, "gs", rescale)
-                apply_func(bus, "bs", rescale)
-
-                apply_func(bus, "va", rad2deg)
+        if data["multinetwork"]
+            for (i,nw_data) in data["nw"]
+                _make_mixed_units(nw_data, mva_base)
             end
+        else
+             _make_mixed_units(data, mva_base)
         end
+    end
+end
 
-        branches = []
-        if haskey(data, "branch")
-            append!(branches, values(data["branch"]))
+function _make_mixed_units(data::Dict{String,Any}, mva_base::Real)
+    rescale      = x -> x*mva_base
+    rescale_dual = x -> x/mva_base
+
+    if haskey(data, "bus")
+        for (i, bus) in data["bus"]
+            apply_func(bus, "pd", rescale)
+            apply_func(bus, "qd", rescale)
+
+            apply_func(bus, "gs", rescale)
+            apply_func(bus, "bs", rescale)
+
+            apply_func(bus, "va", rad2deg)
+
+            apply_func(bus, "lam_kcl_r", rescale_dual)
+            apply_func(bus, "lam_kcl_i", rescale_dual)
         end
+    end
 
-        dclines =[]
-        if haskey(data, "dcline")
-            append!(dclines, values(data["dcline"]))
-        end
+    branches = []
+    if haskey(data, "branch")
+        append!(branches, values(data["branch"]))
+    end
 
-        if haskey(data, "ne_branch")
-            append!(branches, values(data["ne_branch"]))
-        end
+    dclines =[]
+    if haskey(data, "dcline")
+        append!(dclines, values(data["dcline"]))
+    end
 
-        for branch in branches
-            apply_func(branch, "rate_a", rescale)
-            apply_func(branch, "rate_b", rescale)
-            apply_func(branch, "rate_c", rescale)
+    if haskey(data, "ne_branch")
+        append!(branches, values(data["ne_branch"]))
+    end
 
-            apply_func(branch, "shift", rad2deg)
-            apply_func(branch, "angmax", rad2deg)
-            apply_func(branch, "angmin", rad2deg)
+    for branch in branches
+        apply_func(branch, "rate_a", rescale)
+        apply_func(branch, "rate_b", rescale)
+        apply_func(branch, "rate_c", rescale)
 
-            apply_func(branch, "pf", rescale)
-            apply_func(branch, "pt", rescale)
-            apply_func(branch, "qf", rescale)
-            apply_func(branch, "qt", rescale)
-        end
+        apply_func(branch, "shift", rad2deg)
+        apply_func(branch, "angmax", rad2deg)
+        apply_func(branch, "angmin", rad2deg)
 
-        for dcline in dclines
-            apply_func(dcline, "loss0", rescale)
-            apply_func(dcline, "pf", rescale)
-            apply_func(dcline, "pt", rescale)
-            apply_func(dcline, "qf", rescale)
-            apply_func(dcline, "qt", rescale)
-            apply_func(dcline, "pmaxt", rescale)
-            apply_func(dcline, "pmint", rescale)
-            apply_func(dcline, "pmaxf", rescale)
-            apply_func(dcline, "pminf", rescale)
-            apply_func(dcline, "qmaxt", rescale)
-            apply_func(dcline, "qmint", rescale)
-            apply_func(dcline, "qmaxf", rescale)
-            apply_func(dcline, "qminf", rescale)
-        end
+        apply_func(branch, "pf", rescale)
+        apply_func(branch, "pt", rescale)
+        apply_func(branch, "qf", rescale)
+        apply_func(branch, "qt", rescale)
+    end
 
-        if haskey(data, "gen")
-            for (i, gen) in data["gen"]
-                apply_func(gen, "pg", rescale)
-                apply_func(gen, "qg", rescale)
+    for dcline in dclines
+        apply_func(dcline, "loss0", rescale)
+        apply_func(dcline, "pf", rescale)
+        apply_func(dcline, "pt", rescale)
+        apply_func(dcline, "qf", rescale)
+        apply_func(dcline, "qt", rescale)
+        apply_func(dcline, "pmaxt", rescale)
+        apply_func(dcline, "pmint", rescale)
+        apply_func(dcline, "pmaxf", rescale)
+        apply_func(dcline, "pminf", rescale)
+        apply_func(dcline, "qmaxt", rescale)
+        apply_func(dcline, "qmint", rescale)
+        apply_func(dcline, "qmaxf", rescale)
+        apply_func(dcline, "qminf", rescale)
+    end
 
-                apply_func(gen, "pmax", rescale)
-                apply_func(gen, "pmin", rescale)
+    if haskey(data, "gen")
+        for (i, gen) in data["gen"]
+            apply_func(gen, "pg", rescale)
+            apply_func(gen, "qg", rescale)
 
-                apply_func(gen, "qmax", rescale)
-                apply_func(gen, "qmin", rescale)
+            apply_func(gen, "pmax", rescale)
+            apply_func(gen, "pmin", rescale)
 
-                if "model" in keys(gen) && "cost" in keys(gen)
-                    if gen["model"] != 2
-                        warn("Skipping generator cost model of type other than 2")
-                    else
-                        degree = length(gen["cost"])
-                        for (i, item) in enumerate(gen["cost"])
-                            gen["cost"][i] = item/mva_base^(degree-i)
-                        end
+            apply_func(gen, "qmax", rescale)
+            apply_func(gen, "qmin", rescale)
+
+            if "model" in keys(gen) && "cost" in keys(gen)
+                if gen["model"] != 2
+                    warn("Skipping generator cost model of type other than 2")
+                else
+                    degree = length(gen["cost"])
+                    for (i, item) in enumerate(gen["cost"])
+                        gen["cost"][i] = item/mva_base^(degree-i)
                     end
                 end
             end
         end
-
     end
+
 end
+
 
 "checks that phase angle differences are within 90 deg., if not tightens"
 function check_voltage_angle_differences(data, default_pad = 1.0472)
@@ -330,7 +390,7 @@ function check_voltage_angle_differences(data, default_pad = 1.0472)
     end
 end
 
-"checks that each line has a reasonable line thermal rating, if not computes one"
+"checks that each branch has a reasonable thermal rating, if not computes one"
 function check_thermal_limits(data)
     assert("per_unit" in keys(data) && data["per_unit"])
     mva_base = data["baseMVA"]
@@ -360,8 +420,33 @@ function check_thermal_limits(data)
     end
 end
 
+
+"checks that all parallel branches have the same orientation"
+function check_branch_directions(data)
+    orientations = Set()
+    for (i, branch) in data["branch"]
+        orientation = (branch["f_bus"], branch["t_bus"])
+        orientation_rev = (branch["t_bus"], branch["f_bus"])
+
+        if in(orientation_rev, orientations)
+            warn("reversing the orientation of branch $(i) $(orientation) to be consistent with other parallel branches")
+            branch_orginal = copy(branch)
+            branch["f_bus"] = branch_orginal["t_bus"]
+            branch["t_bus"] = branch_orginal["f_bus"]
+            branch["tap"] = 1/branch_orginal["tap"]
+            branch["shift"] = -branch_orginal["shift"]
+            branch["angmin"] = -branch_orginal["angmax"]
+            branch["angmax"] = -branch_orginal["angmin"]
+        else
+            push!(orientations, orientation)
+        end
+
+    end
+end
+
+
 """
-checks that each line has a reasonable transformer parameters
+checks that each branch has a reasonable transformer parameters
 
 this is important becouse setting tap == 0.0 leads to NaN computations, which are hard to debug
 """
@@ -384,6 +469,7 @@ function check_transformer_parameters(data)
         end
     end
 end
+
 
 "checks bus types are consistent with generator connections, if not, fixes them"
 function check_bus_types(data)
@@ -413,6 +499,7 @@ function check_bus_types(data)
         end
     end
 end
+
 
 "checks that parameters for dc lines are reasonable"
 function check_dcline_limits(data)
@@ -452,3 +539,30 @@ function check_dcline_limits(data)
     end
 end
 
+
+"throws warnings if generator and dc line voltage setpoints are not consistent with the bus voltage setpoint"
+function check_voltage_setpoints(data)
+    for (i,gen) in data["gen"]
+        bus_id = gen["gen_bus"]
+        bus = data["bus"]["$(bus_id)"]
+        if gen["vg"] != bus["vm"]
+           warn("the voltage setpoint on generator $(i) does not match the value at bus $(bus_id)")
+        end
+    end
+
+    for (i, dcline) in data["dcline"]
+        bus_fr_id = dcline["f_bus"]
+        bus_to_id = dcline["t_bus"]
+
+        bus_fr = data["bus"]["$(bus_fr_id)"]
+        bus_to = data["bus"]["$(bus_to_id)"]
+
+        if dcline["vf"] != bus_fr["vm"]
+           warn("the from bus voltage setpoint on dc line $(i) does not match the value at bus $(bus_fr_id)")
+        end
+
+        if dcline["vt"] != bus_to["vm"]
+           warn("the to bus voltage setpoint on dc line $(i) does not match the value at bus $(bus_to_id)")
+        end
+    end
+end

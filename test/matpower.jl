@@ -32,10 +32,10 @@ using JSON
     end
 
     @testset "2-bus case file with spaces" begin
-        result = run_opf("../test/data/case2.m", ACPPowerModel, ipopt_solver)
+        result = run_pf("../test/data/case2.m", ACPPowerModel, ipopt_solver)
 
         @test result["status"] == :LocalOptimal
-        @test isapprox(result["objective"], 184.70; atol = 1e-1)
+        @test isapprox(result["objective"], 0.0; atol = 1e-1)
     end
 end
 
@@ -165,6 +165,9 @@ end
     @testset "`build_ref` for 3-bus tnep case" begin
         data = PowerModels.parse_file("../test/data/case3_tnep.m")
         ref = PowerModels.build_ref(data)
+
+        @assert !(data["multinetwork"])
+        ref = ref[:nw][0]
 
         @test haskey(data, "name")
         @test haskey(ref, :name)

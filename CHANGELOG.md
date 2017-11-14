@@ -2,8 +2,26 @@ PowerModels.jl Change Log
 =================
 
 ### Staged
+- Added lambda-based convex hull relaxation scheme for trilinear products
+- Added QCWRTri Power Flow formulation
+- Added support for dual variables (KCL and branch thermal limits)
+
+### v0.5.0
+- Standardized around branch name for pi-model lines (breaking)
+- Added checking for inconsistent orientation on parallel branches
+- Added support for multiple networks in the JuMP model (breaking)
+- Removed epsilon parameter from constraint_voltage_magnitude_setpoint (breaking)
+- Moved misc models to PowerModelsAnnex (breaking)
+- Removed unnecessary NL constraints from ACR and ACT formulations
+- Removed redundant quadratic constraint from DCPLL formulation
+- Added warning messages for inconsistent voltage set points
+- Fixed branch flow units transformation bug
+
+### v0.4.0
 - Added JuMP v0.18 compatibility
 - Added pm.var and made all JuMP variables anonymous (breaking)
+- Added support for SDP, ACR, and ACT Power Flow formulations
+- Added cost model zero filtering to matpower parser
 - Eliminated usage of pm.model.ext, for details see [#149](https://github.com/lanl-ansi/PowerModels.jl/pull/149)
 - Made solution default units per-unit (breaking)
 - Removed deprecated bus-less constraint_theta_ref function (breaking)
@@ -15,6 +33,7 @@ PowerModels.jl Change Log
 - Moved check_cost_models into the objective building function
 - Fixed out of range bug in calc_theta_delta_bounds
 - Fixed bug in phase angle differences in AbstractACPForms
+- Fixed bugs in AbstractDCPLLForm and added OPF test
 
 ### v0.3.4
 - Added support for Matpower data with dclines (thanks to @frederikgeth, @hakanergun)
